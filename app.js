@@ -41,7 +41,7 @@ async function sendReply(toPhone, text) {
 }
 
 // 2. Google Sheet Function
-async function appendToSheet(phone, message, name) {
+async function appendToSheet(phone, message, name, complaintType = '') {
     try {
         const serviceAccountAuth = new JWT({
             email: GOOGLE_CLIENT_EMAIL,
@@ -58,7 +58,8 @@ async function appendToSheet(phone, message, name) {
             Name: name,
             Phone: phone,
             Type: 'text',
-            Message: message
+            Message: message,
+            Complaint: complaintType
         });
 
         console.log('Row added to sheet!');
@@ -99,8 +100,15 @@ app.post('/', async (req, res) => {
                     const textMessage = messageData.text.body;
                     console.log(`New Message from ${senderName}: ${textMessage}`);
 
+                    // Determine Complaint Type
+                    let complaintType = '';
+                    if (textMessage === '1') complaintType = 'Salesman';
+                    else if (textMessage === '2') complaintType = 'Distributor';
+                    else if (textMessage === '3') complaintType = 'Quality/Price/Bill';
+                    else if (textMessage === '4') complaintType = 'Stock Order';
+
                     // 1. Save to Sheet
-                    await appendToSheet(senderPhone, textMessage, senderName);
+                    await appendToSheet(senderPhone, textMessage, senderName, complaintType);
 
                     // 2. Auto-Reply Logic (Only Welcome Message)
                     // Check for "salam", "hi" or "hello"
