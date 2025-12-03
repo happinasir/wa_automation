@@ -2,12 +2,14 @@
   "name": "wa_automation",
   "version": "1.0.0",
   "description": "WhatsApp Automation Bot",
-  "main": "app.js",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "google-spreadsheet": "^4.1.4",
+    "google-auth-library": "^9.0.0"
   },
   "engines": {
     "node": ">=18.x"
