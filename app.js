@@ -23,8 +23,9 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // ---------------------------------------------------------
 // 2. MEMORY (عارضی میموری)
 // ---------------------------------------------------------
-// userState میں سیشن کا اسٹیٹ، نام کا کیش اور استقبالی میسج سیو ہوگا۔
 const userState = {}; 
+// ✅ نام کو سیشن سے باہر مستقل رکھنے کے لیے گلوبل اسٹور
+const nameCacheStore = {}; 
 
 // ---------------------------------------------------------
 // 3. GOOGLE SHEET FUNCTION (ڈیٹا سیونگ logic)
@@ -42,13 +43,13 @@ async function appendToSheet(data) {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
 
-    // ✅ آپ کی نئی ضروریات کے مطابق ڈیٹا میپنگ
+    // Headers کو آپ کی شیٹ اور خواہش کے مطابق Map کیا گیا ہے۔
     await sheet.addRow({
       "Time": data.date,
       "Name": data.customerName,
       "Phone": data.phone,
-      "Message": data.initialMessage,  // Salam, Hy, Hi (یوزر نے جو لکھا)
-      "Complain Type": data.category,  // Salesman Complaint (بوٹ نے جو منتخب کیا)
+      "Message": data.initialMessage,  
+      "Complain Type": data.category,  
       "Salesman Name": data.salesman,
       "Shop Name": data.shop,
       "Address": data.address,
@@ -116,7 +117,6 @@ app.post('/webhook', async (req, res) => {
           const message = body.entry[0].changes[0].value.messages[0];
           const senderPhone = message.from;
           
-          // 1. میسج سے نام نکالیں
           const nameFromPayload = message.contacts ? message.contacts[0].profile.name : null;
 
           if (message.type !== 'text') {
@@ -133,15 +133,14 @@ app.post('/webhook', async (req, res) => {
           
           const currentUser = userState[senderPhone];
           
-          // 2. نام کی کیش (Cache) کا استعمال کریں
-          const cachedName = currentUser.data.nameCache;
+          // 2. ✅ نام کی کیش (Cache) کا استعمال کریں
           let senderName = "Unknown";
-
+          
           if (nameFromPayload) {
               senderName = nameFromPayload;
-              currentUser.data.nameCache = nameFromPayload; 
-          } else if (cachedName) {
-              senderName = cachedName;
+              nameCacheStore[senderPhone] = nameFromPayload; // گلوبل اسٹور میں محفوظ کریں
+          } else if (nameCacheStore[senderPhone]) {
+              senderName = nameCacheStore[senderPhone]; // گلوبل اسٹور سے اٹھائیں
           }
           
           console.log(`👤 User: ${senderName} (${senderPhone}) says: "${textMessage}"`);
@@ -152,7 +151,6 @@ app.post('/webhook', async (req, res) => {
           if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) {
               console.log("🚀 Detected Greeting. Sending Menu...");
               
-              // ✅ استقبالی میسج کو محفوظ کریں تاکہ اسے شیٹ میں استعمال کر سکیں
               currentUser.data.initialMessage = textMessage; 
               userState[senderPhone].step = 'START';
               
@@ -168,9 +166,12 @@ app.post('/webhook', async (req, res) => {
 
               await sendReply(senderPhone, menuText);
           }
-
+          
           // 2. Menu Selection (1-4)
           else if (currentUser.step === 'START') {
+              // ✅ یہاں ہر آنے والا میسج (حتی کہ غلط بھی) Message کالم میں سیو ہوگا
+              currentUser.data.initialMessage = textMessage; 
+              
               if (['1', '2', '3', '4'].includes(textMessage)) {
                   let category = '';
                   if (textMessage === '1') category = 'Salesman Complaint';
@@ -179,11 +180,9 @@ app.post('/webhook', async (req, res) => {
                   if (textMessage === '4') category = 'Stock Order';
 
                   currentUser.data.category = category;
-                  currentUser.data.categoryID = textMessage; // یہ کالم اب استعمال نہیں ہو رہا، لیکن ڈیٹا سیو ہے
                   
                   currentUser.step = 'ASK_SALESMAN';
                   
-                  // انتخاب کی تصدیق والا جملہ حذف کر دیا گیا ہے
                   await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔");
                   
               } else {
@@ -212,29 +211,30 @@ app.post('/webhook', async (req, res) => {
               await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت کی تفصیل لکھیں۔");
           }
 
-// 6. Finish (جہاں ڈیٹا شیٹ میں بھیجا جاتا ہے)
-else if (currentUser.step === 'ASK_COMPLAINT') {
-    currentUser.data.complaint = textMessage;
-    
-    // ✅ تبدیلی: اگر category undefined ہو تو 'N/A (Flow Break)' سیو ہو گا
-    const finalData = {
-        date: new Date().toLocaleString(),
-        category: currentUser.data.category || 'N/A (Flow Break)', 
-        initialMessage: currentUser.data.initialMessage || 'Menu Selected', 
-        customerName: senderName, 
-        phone: senderPhone,
-        salesman: currentUser.data.salesman,
-        shop: currentUser.data.shop,
-        address: currentUser.data.address,
-        complaint: currentUser.data.complaint
-    };
+          // 6. Finish
+          else if (currentUser.step === 'ASK_COMPLAINT') {
+              currentUser.data.complaint = textMessage;
+              
+              const finalData = {
+                  date: new Date().toLocaleString(),
+                  // ✅ Category Missing کا مسئلہ حل ہو گیا ہے
+                  category: currentUser.data.category || 'N/A (Flow Break)', 
+                  initialMessage: currentUser.data.initialMessage || 'Menu Selected', 
+                  customerName: senderName, 
+                  phone: senderPhone,
+                  salesman: currentUser.data.salesman,
+                  shop: currentUser.data.shop,
+                  address: currentUser.data.address,
+                  complaint: currentUser.data.complaint
+              };
 
-    await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
-    
-    await appendToSheet(finalData);
-    // سیشن ختم کریں
-    delete userState[senderPhone];
-}
+              await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
+              
+              await appendToSheet(finalData);
+              // سیشن ختم کریں
+              delete userState[senderPhone];
+          }
+
         }
     }
   } catch (e) {
