@@ -24,11 +24,10 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // 2. MEMORY (عارضی میموری)
 // ---------------------------------------------------------
 const userState = {}; 
-// ✅ نام کو سیشن سے باہر مستقل رکھنے کے لیے گلوبل اسٹور
 const nameCacheStore = {}; 
 
 // ---------------------------------------------------------
-// 3. GOOGLE SHEET FUNCTION (ڈیٹا سیونگ logic)
+// 3. GOOGLE SHEET FUNCTION
 // ---------------------------------------------------------
 async function appendToSheet(data) {
   console.log("📝 Attempting to save to Google Sheet...");
@@ -43,12 +42,12 @@ async function appendToSheet(data) {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
 
-    // ✅ Headers updated: "Message" removed, "Complaint" used for category
+    // Headers کو آپ کی شیٹ اور خواہش کے مطابق Map کیا گیا ہے۔
     await sheet.addRow({
       "Time": data.date,
       "Name": data.customerName,
       "Phone": data.phone,
-      "Complaint": data.category,  
+      "Complaint": data.category,  // Complaint Type
       "Salesman Name": data.salesman,
       "Shop Name": data.shop,
       "Address": data.address,
@@ -137,9 +136,9 @@ app.post('/webhook', async (req, res) => {
           
           if (nameFromPayload) {
               senderName = nameFromPayload;
-              nameCacheStore[senderPhone] = nameFromPayload; // گلوبل اسٹور میں محفوظ کریں
+              nameCacheStore[senderPhone] = nameFromPayload; 
           } else if (nameCacheStore[senderPhone]) {
-              senderName = nameCacheStore[senderPhone]; // گلوبل اسٹور سے اٹھائیں
+              senderName = nameCacheStore[senderPhone];
           }
           
           console.log(`👤 User: ${senderName} (${senderPhone}) says: "${textMessage}"`);
@@ -150,7 +149,6 @@ app.post('/webhook', async (req, res) => {
           if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) {
               console.log("🚀 Detected Greeting. Sending Menu...");
               
-              // چونکہ Message کالم ختم ہو گیا ہے، initialMessage کو بھی سیو کرنے کی ضرورت نہیں
               userState[senderPhone].step = 'START';
               
               const menuText = `خوش آمدید! 🌹
@@ -180,10 +178,10 @@ app.post('/webhook', async (req, res) => {
                   
                   currentUser.step = 'ASK_SALESMAN';
                   
-                  await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھیں۔");
+                  await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔");
                   
               } else {
-                  await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) کا انتحاب کریں۔");
+                  await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) لکھ کر بھیجیں۔");
               }
           }
 
@@ -191,28 +189,40 @@ app.post('/webhook', async (req, res) => {
           else if (currentUser.step === 'ASK_SALESMAN') {
               currentUser.data.salesman = textMessage;
               currentUser.step = 'ASK_SHOP';
-              await sendReply(senderPhone, "شکریہ! اپنی دکان کا نام لکھیں۔");
+              await sendReply(senderPhone, "شکریہ۔ اب اپنی دکان کا نام لکھ کر بھیجیں۔");
           }
 
           // 4. Ask Address
           else if (currentUser.step === 'ASK_SHOP') {
               currentUser.data.shop = textMessage;
               currentUser.step = 'ASK_ADDRESS';
-              await sendReply(senderPhone, "شکریہ! دکان کا ایڈریس لکھیں۔");
+              await sendReply(senderPhone, "شکریہ۔ اب اپنا ایڈریس لکھ کر بھیجیں۔");
           }
 
           // 5. Ask Details
           else if (currentUser.step === 'ASK_ADDRESS') {
               currentUser.data.address = textMessage;
               currentUser.step = 'ASK_COMPLAINT';
-              await sendReply(senderPhone, "شکریہ! اب آخر میں اپنی شکایت کی تفصیل لکھیں۔");
+              await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت کی تفصیل لکھیں۔");
           }
 
-          // 6. Finish (جہاں ڈیٹا شیٹ میں بھیجا جاتا ہے)
+          // 6. Finish (Final Confirmation)
           else if (currentUser.step === 'ASK_COMPLAINT') {
               currentUser.data.complaint = textMessage;
               
-              // ✅ finalData سے initialMessage کو ہٹا دیا گیا ہے
+              // ✅ نئی تبدیلی: فائنل سمری میسج تیار کیا گیا
+              const finalConfirmation = `
+*فارم جمع ہو گیا*
+-----------------
+سیل مین کا نام: ${currentUser.data.salesman}
+دکان کا نام: ${currentUser.data.shop}
+دکان کا ایڈریس: ${currentUser.data.address}
+شکایت: ${currentUser.data.complaint}
+---
+آپ کا بہت شکریہ! 🌹
+آپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ سے رابطہ کر لیا جائے گا۔
+              `.trim();
+
               const finalData = {
                   date: new Date().toLocaleString(),
                   category: currentUser.data.category || 'N/A (Flow Break)', 
@@ -224,10 +234,9 @@ app.post('/webhook', async (req, res) => {
                   complaint: currentUser.data.complaint
               };
 
-              await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
+              await sendReply(senderPhone, finalConfirmation); // سمری میسج بھیجا گیا
               
               await appendToSheet(finalData);
-              // سیشن ختم کریں
               delete userState[senderPhone];
           }
 
