@@ -152,7 +152,7 @@ app.post('/webhook', async (req, res) => {
               userState[senderPhone].step = 'START';
               
               const menuText = `خوش آمدید! 🌹
-ہماری سروس میں آپ کا استقبال ہے۔
+ہماری کسٹمر سپورٹ سروس میں آپ کا استقبال ہے۔
 
 براہِ کرم مطلوبہ آپشن کا اندراج کریں:
 
@@ -179,10 +179,10 @@ app.post('/webhook', async (req, res) => {
                   
                   currentUser.step = 'ASK_SALESMAN';
                   
-                  await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔");
+                  await sendReply(senderPhone, "براہ کرم سیلز مین کا نام لکھیں۔");
                   
               } else {
-                  await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) لکھ کر بھیجیں۔");
+                  await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) کا انتحاب کریں۔");
               }
           }
 
@@ -190,21 +190,21 @@ app.post('/webhook', async (req, res) => {
           else if (currentUser.step === 'ASK_SALESMAN') {
               currentUser.data.salesman = textMessage;
               currentUser.step = 'ASK_SHOP';
-              await sendReply(senderPhone, "شکریہ۔ اب اپنی دکان کا نام لکھ کر بھیجیں۔");
+              await sendReply(senderPhone, "شکریہ! دکان کا نام لکھیں۔");
           }
 
           // 4. Ask Address
           else if (currentUser.step === 'ASK_SHOP') {
               currentUser.data.shop = textMessage;
               currentUser.step = 'ASK_ADDRESS';
-              await sendReply(senderPhone, "شکریہ۔ اب اپنا ایڈریس لکھ کر بھیجیں۔");
+              await sendReply(senderPhone, "اب دکان کا ایڈریس لکھیں۔");
           }
 
           // 5. Ask Details
           else if (currentUser.step === 'ASK_ADDRESS') {
               currentUser.data.address = textMessage;
               currentUser.step = 'ASK_COMPLAINT';
-              await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت کی تفصیل لکھیں۔");
+              await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت تفصیل سے لکھیں۔");
           }
 
           // 6. Finish (Final Confirmation)
@@ -220,8 +220,7 @@ app.post('/webhook', async (req, res) => {
 دکان کا ایڈریس: ${currentUser.data.address}
 شکایت: ${currentUser.data.complaint}
 -----
-بہت جلد آپ سے رابطہ کر لیا جائے گا۔
-بہت شکریہ! 🌹
+بہت جلد آپ سے رابطہ کر لیا جائے گا۔ شکریہ! 🌹
               `.trim();
 
               const finalData = {
