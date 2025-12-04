@@ -6,42 +6,26 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
+// ---------------------------------------------------------
+// 1. CONFIGURATION
+// ---------------------------------------------------------
 const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 
-// Environment Variables
 const SHEET_ID = process.env.SHEET_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
 const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// 🧠 MEMORY (یہاں یوزر کا عارضی ڈیٹا سیو ہوگا)
+// ---------------------------------------------------------
+// 2. MEMORY
+// ---------------------------------------------------------
 const userState = {}; 
 
-// 1. Message Sending Function
-async function sendReply(toPhone, text) {
-  try {
-    await axios({
-      method: 'POST',
-      url: `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
-      headers: {
-        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      data: {
-        messaging_product: 'whatsapp',
-        to: toPhone,
-        type: 'text',
-        text: { body: text }
-      }
-    });
-  } catch (e) {
-    console.error('Error sending reply:', e.message);
-  }
-}
-
-// 2. Google Sheet Function (Writes FULL ROW at the end)
+// ---------------------------------------------------------
+// 3. GOOGLE SHEET FUNCTION (Updated Columns)
+// ---------------------------------------------------------
 async function appendToSheet(data) {
   try {
     const serviceAccountAuth = new JWT({
@@ -51,97 +35,157 @@ async function appendToSheet(data) {
     });
 
     const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
-    await doc.loadInfo(); 
+    await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
-    
-    // شیٹ میں ڈیٹا ایڈ کریں
-    await sheet.addRow({ 
-      'Time': new Date().toLocaleString(),
-      'Customer Name': data.customerName, 
-      'Phone': data.phone,
-      'Salesman Name': data.salesman,
-      'Shop Name': data.shop,
-      'Address': data.address,
-      'Complaint Message': data.complaint
+
+    // ✅ آپ کے نئے کالمز کے مطابق ڈیٹا سیو ہو رہا ہے
+    await sheet.addRow({
+      "Time": data.date,
+      "Name": data.customerName,
+      "Phone": data.phone,
+      "Message": data.category,        // یہاں شکایت کی قسم (بطور سبجیکٹ)
+      "Complain Type": data.category,  // یہاں بھی شکایت کی قسم (1,2,3,4 والی)
+      "Salesman Name": data.salesman,
+      "Shop Name": data.shop,
+      "Address": data.address,
+      "Complaint Message": data.complaint // یہاں اصل تفصیل
     });
-    
-    console.log('Full Complaint added to sheet!');
+
+    console.log('✅ Data saved to Google Sheet with new columns');
   } catch (error) {
-    console.error('Sheet Error:', error);
+    console.error('❌ Error saving to sheet:', error.message);
   }
 }
 
-// Routes
-app.get('/', (req, res) => {
-  const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': token } = req.query;
-  if (mode === 'subscribe' && token === verifyToken) {
-    res.status(200).send(challenge);
+// ---------------------------------------------------------
+// 4. WHATSAPP SEND FUNCTION
+// ---------------------------------------------------------
+async function sendReply(to, bodyText) {
+  try {
+    await axios({
+      method: 'POST',
+      url: `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
+      headers: {
+        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        messaging_product: 'whatsapp',
+        to: to,
+        text: { body: bodyText },
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error sending message:', error.response ? error.response.data : error.message);
+  }
+}
+
+// ---------------------------------------------------------
+// 5. WEBHOOK LOGIC
+// ---------------------------------------------------------
+app.get('/webhook', (req, res) => {
+  if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === verifyToken) {
+    res.send(req.query['hub.challenge']);
   } else {
-    res.status(403).end();
+    res.sendStatus(400);
   }
 });
 
-app.post('/', async (req, res) => {
-  res.status(200).end();
+app.post('/webhook', async (req, res) => {
+  res.sendStatus(200);
 
   try {
     const body = req.body;
-    if (body.object && body.entry && body.entry[0].changes && body.entry[0].changes[0].value.messages) {
-        
-        const messageData = body.entry[0].changes[0].value.messages[0];
-        const contactData = body.entry[0].changes[0].value.contacts[0];
-        
-        const senderPhone = messageData.from;
-        const senderName = contactData.profile.name;
-        
-        if (messageData.type === 'text') {
-          const textMessage = messageData.text.body;
-          const lowerText = textMessage.toLowerCase().trim();
+    if (body.object) {
+        if (
+            body.entry &&
+            body.entry[0].changes &&
+            body.entry[0].changes[0].value.messages &&
+            body.entry[0].changes[0].value.messages[0]
+        ) {
+          const message = body.entry[0].changes[0].value.messages[0];
+          const senderPhone = message.from;
+          const senderName = message.contacts ? message.contacts[0].profile.name : "Unknown";
           
-          console.log(`Msg from ${senderName}: ${textMessage}`);
+          if (message.type !== 'text') return;
+          
+          const textMessage = message.text.body.trim();
+          const lowerText = textMessage.toLowerCase();
 
-          // --- STATE MANAGEMENT LOGIC ---
-
-          // چیک کریں کہ کیا یوزر کا کوئی پرانا ریکارڈ میموری میں ہے؟
           if (!userState[senderPhone]) {
               userState[senderPhone] = { step: 'START', data: {} };
           }
 
           const currentUser = userState[senderPhone];
 
-          // 🛑 CASE 1: یوزر نے "1" دبایا (Start Complaint)
-          if (textMessage === "1" && currentUser.step === 'START') {
-              currentUser.step = 'ASK_SALESMAN';
-              await sendReply(senderPhone, "برائے مہربانی **Salesman Name** (سیلز مین کا نام) لکھ کر بھیجیں۔");
+          // ---------------- LOGIC ----------------
+
+          // 1. Greeting / Reset
+          if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) {
+              
+              userState[senderPhone] = { step: 'START', data: {} };
+              
+              const menuText = `خوش آمدید! 🌹
+ہماری سروس میں آپ کا استقبال ہے۔
+
+براہِ کرم مطلوبہ آپشن کا اندراج کریں:
+
+1️⃣. سیل مین سے متعلق شکایت
+2️⃣. ڈسٹری بیوٹر سے متعلق شکایت
+3️⃣. سٹاک کی کوالٹی/ قیمت یا بل کے متعلق شکایت
+4️⃣. سٹاک آرڈر`;
+
+              await sendReply(senderPhone, menuText);
           }
 
-          // 🛑 CASE 2: سیلز مین کا نام آیا -> دکان کا نام پوچھیں
+          // 2. Menu Selection (1-4)
+          else if (currentUser.step === 'START') {
+              if (['1', '2', '3', '4'].includes(textMessage)) {
+                  let category = '';
+                  if (textMessage === '1') category = 'Salesman Complaint';
+                  if (textMessage === '2') category = 'Distributor Complaint';
+                  if (textMessage === '3') category = 'Quality/Price Issue';
+                  if (textMessage === '4') category = 'Stock Order';
+
+                  currentUser.data.category = category;
+                  
+                  currentUser.step = 'ASK_SALESMAN';
+                  await sendReply(senderPhone, `آپ نے منتخب کیا: *${category}*
+                  
+براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔`);
+              } else {
+                  await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) لکھ کر بھیجیں۔");
+              }
+          }
+
+          // 3. Ask Shop
           else if (currentUser.step === 'ASK_SALESMAN') {
-              currentUser.data.salesman = textMessage; // نام سیو کر لیا
+              currentUser.data.salesman = textMessage;
               currentUser.step = 'ASK_SHOP';
-              await sendReply(senderPhone, "شکریہ۔ اب **Shop Name** (دکان کا نام) لکھیں۔");
+              await sendReply(senderPhone, "شکریہ۔ اب اپنی دکان کا نام لکھ کر بھیجیں۔");
           }
 
-          // 🛑 CASE 3: دکان کا نام آیا -> ایڈریس پوچھیں
+          // 4. Ask Address
           else if (currentUser.step === 'ASK_SHOP') {
               currentUser.data.shop = textMessage;
               currentUser.step = 'ASK_ADDRESS';
-              await sendReply(senderPhone, "شکریہ۔ اب دکان کا **Address** (پتہ) لکھیں۔");
+              await sendReply(senderPhone, "شکریہ۔ اب اپنا ایڈریس لکھ کر بھیجیں۔");
           }
 
-          // 🛑 CASE 4: ایڈریس آیا -> شکایت پوچھیں
+          // 5. Ask Details
           else if (currentUser.step === 'ASK_ADDRESS') {
               currentUser.data.address = textMessage;
               currentUser.step = 'ASK_COMPLAINT';
-              await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی **Complaint** (شکایت) تفصیل سے لکھ کر بھیجیں۔");
+              await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت کی تفصیل لکھیں۔");
           }
 
-          // 🛑 CASE 5: شکایت آئی -> شیٹ میں لکھیں اور ختم کریں (FINISH)
+          // 6. Save Data & Finish
           else if (currentUser.step === 'ASK_COMPLAINT') {
               currentUser.data.complaint = textMessage;
               
-              // ڈیٹا شیٹ کے فنکشن کو بھیجیں (اضافی معلومات بھی)
               const finalData = {
+                  date: new Date().toLocaleString(),
+                  category: currentUser.data.category,
                   customerName: senderName,
                   phone: senderPhone,
                   salesman: currentUser.data.salesman,
@@ -150,30 +194,12 @@ app.post('/', async (req, res) => {
                   complaint: currentUser.data.complaint
               };
 
-              await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کی شکایت ہمارے سسٹم میں درج کر لی گئی ہے۔ ہماری ٹیم جلد کارروائی کرے گی۔");
+              await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
               
-              // 📝 شیٹ میں لکھیں
               await appendToSheet(finalData);
-
-              // 🗑️ میموری صاف کریں (تاکہ اگلی بار نئی شکایت لکھ سکے)
               delete userState[senderPhone];
           }
 
-          // 🛑 CASE 6: اگر یوزر "Salam" یا "Hi" بھیجے (کسی بھی وقت)
-          else if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) {
-              // اگر یوزر بیچ میں پھنس گیا ہو تو اسے ری سیٹ کر دیں
-              userState[senderPhone] = { step: 'START', data: {} };
-              
-              await sendReply(senderPhone, "خوش آمدید! 🌹\nشکایت درج کروانے کے لیے **1** لکھ کر بھیجیں۔");
-          }
-
-          // 🛑 CASE 7: اگر کوئی غلط میسج بھیجے
-          else {
-             // اگر یوزر کسی پروسیس میں نہیں ہے تو اسے گائیڈ کریں
-             if (currentUser.step === 'START') {
-                 await sendReply(senderPhone, "شکایت درج کروانے کے لیے **1** لکھ کر بھیجیں۔");
-             }
-          }
         }
     }
   } catch (e) {
