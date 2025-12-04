@@ -207,40 +207,37 @@ app.post('/webhook', async (req, res) => {
               await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت تفصیل سے لکھیں۔");
           }
 
-          // 6. Finish (Final Confirmation)
-          else if (currentUser.step === 'ASK_COMPLAINT') {
-              currentUser.data.complaint = textMessage;
-              
-              // ✅ فائنل سمری میسج
-              const finalConfirmation = `
-*آپ کا ڈیٹا سسٹم میں درج کر لیا گیا ہے*
-------------------------------
+// 6. Finish (Final Confirmation)
+else if (currentUser.step === 'ASK_COMPLAINT') {
+    currentUser.data.complaint = textMessage;
+    
+    // ✅ نئی تبدیلی: فائنل سمری میسج جو آپ کے مطلوبہ فارمیٹ میں ہے۔
+    const finalConfirmation = `
 سیل مین کا نام: ${currentUser.data.salesman}
 دکان کا نام: ${currentUser.data.shop}
 دکان کا ایڈریس: ${currentUser.data.address}
-شکایت: ${currentUser.data.complaint}
------
-بہت جلد آپ سے رابطہ کر لیا جائے گا۔ شکریہ! 🌹
-              `.trim();
+شکایت: ${currentUser.data.category}
+---
+آپ کا بہت شکریہ! 🌹
+آپ کا ڈیٹا سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ سے رابطہ کر لیا جائے گا۔
+    `.trim();
 
-              const finalData = {
-                  date: new Date().toLocaleString(),
-                  // ✅ Complaint Type missing fix
-                  category: currentUser.data.category || 'N/A (Flow Break)', 
-                  customerName: senderName, 
-                  phone: senderPhone,
-                  salesman: currentUser.data.salesman,
-                  shop: currentUser.data.shop,
-                  address: currentUser.data.address,
-                  complaint: currentUser.data.complaint
-              };
+    const finalData = {
+        date: new Date().toLocaleString(),
+        category: currentUser.data.category || 'N/A (Flow Break)', 
+        customerName: senderName, 
+        phone: senderPhone,
+        salesman: currentUser.data.salesman,
+        shop: currentUser.data.shop,
+        address: currentUser.data.address,
+        complaint: currentUser.data.complaint
+    };
 
-              await sendReply(senderPhone, finalConfirmation);
-              
-              await appendToSheet(finalData);
-              delete userState[senderPhone];
-          }
-
+    await sendReply(senderPhone, finalConfirmation); // سمری میسج بھیجا گیا
+    
+    await appendToSheet(finalData);
+    delete userState[senderPhone];
+}
         }
     }
   } catch (e) {
