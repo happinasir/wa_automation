@@ -24,40 +24,40 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // 2. MEMORY (عارضی میموری)
 // ---------------------------------------------------------
 const userState = {}; 
-const nameCacheStore = {}; // نام کو سیشن سے باہر مستقل رکھنے کے لیے
+const nameCacheStore = {}; 
 
 // ---------------------------------------------------------
 // 3. GOOGLE SHEET FUNCTION (ڈیٹا سیونگ logic)
 // ---------------------------------------------------------
 async function appendToSheet(data) {
-  console.log("📝 Attempting to save to Google Sheet...");
-  try {
-    const serviceAccountAuth = new JWT({
-      email: GOOGLE_CLIENT_EMAIL,
-      key: GOOGLE_PRIVATE_KEY,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+  console.log("📝 Attempting to save to Google Sheet...");
+  try {
+    const serviceAccountAuth = new JWT({
+      email: GOOGLE_CLIENT_EMAIL,
+      key: GOOGLE_PRIVATE_KEY,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-    const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByIndex[0];
+    const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[0];
 
-    // ✅ اصلاح کی گئی: کالم کی Key کو "Complaint Type" کر دیا گیا ہے۔
-    await sheet.addRow({
-      "Time": data.date,
-      "Name": data.customerName,
-      "Phone": data.phone,
-      "Complaint Type": data.category,  // <--- یہاں تبدیلی کی گئی ہے
-      "Salesman Name": data.salesman,
-      "Shop Name": data.shop,
-      "Address": data.address,
-      "Complaint Message": data.complaint 
-    });
+    // Headers updated: Complaint Type is used
+    await sheet.addRow({
+      "Time": data.date,
+      "Name": data.customerName,
+      "Phone": data.phone,
+      "Complaint Type": data.category,
+      "Salesman Name": data.salesman,
+      "Shop Name": data.shop,
+      "Address": data.address,
+      "Complaint Message": data.complaint 
+    });
 
-    console.log('✅ Data SAVED successfully!');
-  } catch (error) {
-    console.error('❌ Error saving to sheet:', error.message);
-  }
+    console.log('✅ Data SAVED successfully!');
+  } catch (error) {
+    console.error('❌ Error saving to sheet:', error.message);
+  }
 }
 
 // ---------------------------------------------------------
@@ -136,7 +136,7 @@ app.post('/webhook', async (req, res) => {
           
           if (nameFromPayload) {
               senderName = nameFromPayload;
-              nameCacheStore[senderPhone] = nameFromPayload; 
+              nameCacheStore[senderPhone] = nameFromPayload;
           } else if (nameCacheStore[senderPhone]) {
               senderName = nameCacheStore[senderPhone];
           }
@@ -169,7 +169,7 @@ app.post('/webhook', async (req, res) => {
               
               if (['1', '2', '3', '4'].includes(textMessage)) {
                   let category = '';
-                  // ✅ Complaint Type Options Updated
+                  
                   if (textMessage === '1') category = 'Salesman Complaint';
                   if (textMessage === '2') category = 'Distributor Complaint';
                   if (textMessage === '3') category = 'Quality/Price/Bill';
@@ -179,6 +179,7 @@ app.post('/webhook', async (req, res) => {
                   
                   currentUser.step = 'ASK_SALESMAN';
                   
+                  // سوال وہی رہے گا
                   await sendReply(senderPhone, "براہ کرم سیلز مین کا نام لکھیں۔");
                   
               } else {
@@ -207,38 +208,55 @@ app.post('/webhook', async (req, res) => {
               await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت تفصیل سے لکھیں۔");
           }
 
-// 6. Finish (Final Confirmation)
-else if (currentUser.step === 'ASK_COMPLAINT') {
-    currentUser.data.complaint = textMessage;
-    
-    // ✅ نئی تبدیلی: فائنل سمری میسج جو آپ کے مطلوبہ فارمیٹ میں ہے۔
-    const finalConfirmation = `
+          // 6. Finish (Final Confirmation)
+          else if (currentUser.step === 'ASK_COMPLAINT') {
+              currentUser.data.complaint = textMessage;
+              
+              const category = currentUser.data.category;
+              let contactInfo = "";
+
+              // ✅ رابطہ نمبر کی شرط شامل کی گئی
+              if (category === 'Distributor Complaint') {
+                  contactInfo = `
+*محمد اعجاز شیخ*
+0333-8033113`;
+              } else {
+                  // Option 1, 3, اور 4 کے لیے
+                  contactInfo = `
+*شیخ محمد مسعود*
+0300-7753113`;
+              }
+
+              // ✅ آخری سمری میسج
+              const finalConfirmation = `
 *آپ کا ڈیٹا سسٹم میں درج کر لیا گیا ہے*
 ----------------------------------------
 سیل مین کا نام: ${currentUser.data.salesman}
 دکان کا نام: ${currentUser.data.shop}
 دکان کا ایڈریس: ${currentUser.data.address}
-شکایت: ${currentUser.data.category}
+شکایت: ${category}
+---
 بہت جلد آپ سے رابطہ کر لیا جائے گا۔ شکریہ! 🌹
+${contactInfo}
+              `.trim();
 
-    `.trim();
+              const finalData = {
+                  date: new Date().toLocaleString(),
+                  category: category || 'N/A (Flow Break)', 
+                  customerName: senderName, 
+                  phone: senderPhone,
+                  salesman: currentUser.data.salesman,
+                  shop: currentUser.data.shop,
+                  address: currentUser.data.address,
+                  complaint: currentUser.data.complaint
+              };
 
-    const finalData = {
-        date: new Date().toLocaleString(),
-        category: currentUser.data.category || 'N/A (Flow Break)', 
-        customerName: senderName, 
-        phone: senderPhone,
-        salesman: currentUser.data.salesman,
-        shop: currentUser.data.shop,
-        address: currentUser.data.address,
-        complaint: currentUser.data.complaint
-    };
+              await sendReply(senderPhone, finalConfirmation);
+              
+              await appendToSheet(finalData);
+              delete userState[senderPhone];
+          }
 
-    await sendReply(senderPhone, finalConfirmation); // سمری میسج بھیجا گیا
-    
-    await appendToSheet(finalData);
-    delete userState[senderPhone];
-}
         }
     }
   } catch (e) {
