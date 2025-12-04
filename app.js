@@ -111,10 +111,10 @@ app.post('/', async (req, res) => {
                     await appendToSheet(senderPhone, textMessage, senderName, complaintType);
 
                     // 2. Auto-Reply Logic (Only Welcome Message)
-                    // Check for "salam", "hi" or "hello"
+                    // Check for "salam", "hi", "hy" or "hello"
                     const lowerText = textMessage.toLowerCase();
 
-                    if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello")) {
+                    if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hy") || lowerText.includes("hello")) {
                         await sendReply(senderPhone, "خوش آمدید! 🌹\nہماری سروس میں آپ کا استقبال ہے۔");
                         await sendReply(senderPhone, "براہِ کرم مطلوبہ آپشن کا اندراج کریں:\n\n1️⃣. سیل مین سے متعلق شکایت\n2️⃣. ڈسٹری بیوٹر سے متعلق شکایت\n3️⃣. سٹاک کی کوالٹی/ قیمت یا بل کے متعلق شکایت\n4️⃣. سٹاک آرڈر");
                     }
