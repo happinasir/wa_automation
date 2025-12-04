@@ -212,29 +212,29 @@ app.post('/webhook', async (req, res) => {
               await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت کی تفصیل لکھیں۔");
           }
 
-          // 6. Finish
-          else if (currentUser.step === 'ASK_COMPLAINT') {
-              currentUser.data.complaint = textMessage;
-              
-              const finalData = {
-                  date: new Date().toLocaleString(),
-                  category: currentUser.data.category,
-                  initialMessage: currentUser.data.initialMessage || 'Menu Selected', // ✅ یہاں استقبالی میسج استعمال ہو رہا ہے
-                  customerName: senderName, 
-                  phone: senderPhone,
-                  salesman: currentUser.data.salesman,
-                  shop: currentUser.data.shop,
-                  address: currentUser.data.address,
-                  complaint: currentUser.data.complaint
-              };
+// 6. Finish (جہاں ڈیٹا شیٹ میں بھیجا جاتا ہے)
+else if (currentUser.step === 'ASK_COMPLAINT') {
+    currentUser.data.complaint = textMessage;
+    
+    // ✅ تبدیلی: اگر category undefined ہو تو 'N/A (Flow Break)' سیو ہو گا
+    const finalData = {
+        date: new Date().toLocaleString(),
+        category: currentUser.data.category || 'N/A (Flow Break)', 
+        initialMessage: currentUser.data.initialMessage || 'Menu Selected', 
+        customerName: senderName, 
+        phone: senderPhone,
+        salesman: currentUser.data.salesman,
+        shop: currentUser.data.shop,
+        address: currentUser.data.address,
+        complaint: currentUser.data.complaint
+    };
 
-              await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
-              
-              await appendToSheet(finalData);
-              // Name Cache کو محفوظ رکھنے کے لیے صرف step کو reset کریں، پورے سیشن کو delete نہ کریں
-              userState[senderPhone].step = 'FINISHED'; 
-          }
-
+    await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
+    
+    await appendToSheet(finalData);
+    // سیشن ختم کریں
+    delete userState[senderPhone];
+}
         }
     }
   } catch (e) {
