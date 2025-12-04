@@ -23,7 +23,7 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // ---------------------------------------------------------
 // 2. MEMORY (عارضی میموری)
 // ---------------------------------------------------------
-// userState میں سیشن کا اسٹیٹ اور نام کا کیش (nameCache) سیو ہوگا۔
+// userState میں سیشن کا اسٹیٹ، نام کا کیش اور استقبالی میسج سیو ہوگا۔
 const userState = {}; 
 
 // ---------------------------------------------------------
@@ -42,17 +42,17 @@ async function appendToSheet(data) {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
 
-    // Headers کو آپ کی شیٹ اور خواہش کے مطابق Map کیا گیا ہے۔
+    // ✅ آپ کی نئی ضروریات کے مطابق ڈیٹا میپنگ
     await sheet.addRow({
       "Time": data.date,
       "Name": data.customerName,
       "Phone": data.phone,
-      "Message": data.categoryID,      // صرف نمبر (1, 2, 3, 4) سیو ہوگا
-      "Complain Type": data.category,  // مکمل نام (Salesman Complaint) سیو ہوگا
+      "Message": data.initialMessage,  // Salam, Hy, Hi (یوزر نے جو لکھا)
+      "Complain Type": data.category,  // Salesman Complaint (بوٹ نے جو منتخب کیا)
       "Salesman Name": data.salesman,
       "Shop Name": data.shop,
       "Address": data.address,
-      "Complaint Message": data.complaint // تفصیل
+      "Complaint Message": data.complaint 
     });
 
     console.log('✅ Data SAVED successfully!');
@@ -116,7 +116,7 @@ app.post('/webhook', async (req, res) => {
           const message = body.entry[0].changes[0].value.messages[0];
           const senderPhone = message.from;
           
-          // 1. میسج سے نام نکالیں (اگر Meta بھیج رہا ہو)
+          // 1. میسج سے نام نکالیں
           const nameFromPayload = message.contacts ? message.contacts[0].profile.name : null;
 
           if (message.type !== 'text') {
@@ -133,16 +133,14 @@ app.post('/webhook', async (req, res) => {
           
           const currentUser = userState[senderPhone];
           
-          // 2. ✅ نام کی کیش (Cache) کا استعمال کریں
+          // 2. نام کی کیش (Cache) کا استعمال کریں
           const cachedName = currentUser.data.nameCache;
           let senderName = "Unknown";
 
           if (nameFromPayload) {
-              // اگر نیا نام ملا، تو اسے استعمال کریں اور کیش میں ڈال دیں
               senderName = nameFromPayload;
               currentUser.data.nameCache = nameFromPayload; 
           } else if (cachedName) {
-              // نیا نام نہیں ہے، تو کیش والا نام استعمال کریں
               senderName = cachedName;
           }
           
@@ -153,7 +151,9 @@ app.post('/webhook', async (req, res) => {
           // 1. Greeting / Reset
           if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) {
               console.log("🚀 Detected Greeting. Sending Menu...");
-              // اگر یوزر نے دوبارہ سلام کیا تو Name Cache محفوظ رہے گا، لیکن steps ری سیٹ ہو جائیں گے
+              
+              // ✅ استقبالی میسج کو محفوظ کریں تاکہ اسے شیٹ میں استعمال کر سکیں
+              currentUser.data.initialMessage = textMessage; 
               userState[senderPhone].step = 'START';
               
               const menuText = `خوش آمدید! 🌹
@@ -179,11 +179,11 @@ app.post('/webhook', async (req, res) => {
                   if (textMessage === '4') category = 'Stock Order';
 
                   currentUser.data.category = category;
-                  currentUser.data.categoryID = textMessage; 
+                  currentUser.data.categoryID = textMessage; // یہ کالم اب استعمال نہیں ہو رہا، لیکن ڈیٹا سیو ہے
                   
                   currentUser.step = 'ASK_SALESMAN';
                   
-                  // 👇 تبدیلی: صرف اگلے سوال کا میسج جا رہا ہے
+                  // انتخاب کی تصدیق والا جملہ حذف کر دیا گیا ہے
                   await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔");
                   
               } else {
@@ -219,8 +219,7 @@ app.post('/webhook', async (req, res) => {
               const finalData = {
                   date: new Date().toLocaleString(),
                   category: currentUser.data.category,
-                  categoryID: currentUser.data.categoryID,
-                  // ✅ یہاں Name Cache والا senderName استعمال ہو رہا ہے
+                  initialMessage: currentUser.data.initialMessage || 'Menu Selected', // ✅ یہاں استقبالی میسج استعمال ہو رہا ہے
                   customerName: senderName, 
                   phone: senderPhone,
                   salesman: currentUser.data.salesman,
@@ -232,8 +231,8 @@ app.post('/webhook', async (req, res) => {
               await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
               
               await appendToSheet(finalData);
-              // ڈیٹا سیو ہونے کے بعد سیشن ختم کریں
-              delete userState[senderPhone];
+              // Name Cache کو محفوظ رکھنے کے لیے صرف step کو reset کریں، پورے سیشن کو delete نہ کریں
+              userState[senderPhone].step = 'FINISHED'; 
           }
 
         }
