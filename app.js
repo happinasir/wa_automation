@@ -24,10 +24,10 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // 2. MEMORY (عارضی میموری)
 // ---------------------------------------------------------
 const userState = {}; 
-const nameCacheStore = {}; 
+const nameCacheStore = {}; // نام کو سیشن سے باہر مستقل رکھنے کے لیے
 
 // ---------------------------------------------------------
-// 3. GOOGLE SHEET FUNCTION
+// 3. GOOGLE SHEET FUNCTION (ڈیٹا سیونگ logic)
 // ---------------------------------------------------------
 async function appendToSheet(data) {
   console.log("📝 Attempting to save to Google Sheet...");
@@ -42,12 +42,12 @@ async function appendToSheet(data) {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
 
-    // Headers کو آپ کی شیٹ اور خواہش کے مطابق Map کیا گیا ہے۔
+    // ✅ "Message" کالم کو ہٹا دیا گیا اور Complaint Type کو "Complaint" کالم میں میپ کیا گیا
     await sheet.addRow({
       "Time": data.date,
       "Name": data.customerName,
       "Phone": data.phone,
-      "Complaint": data.category,  // Complaint Type
+      "Complaint": data.category,  // Salesman Complaint (Complaint Type)
       "Salesman Name": data.salesman,
       "Shop Name": data.shop,
       "Address": data.address,
@@ -131,7 +131,7 @@ app.post('/webhook', async (req, res) => {
           
           const currentUser = userState[senderPhone];
           
-          // 2. نام کی کیش (Cache) کا استعمال کریں
+          // 2. Name Cache Logic
           let senderName = "Unknown";
           
           if (nameFromPayload) {
@@ -169,6 +169,7 @@ app.post('/webhook', async (req, res) => {
               
               if (['1', '2', '3', '4'].includes(textMessage)) {
                   let category = '';
+                  // ✅ Complaint Type Options Updated
                   if (textMessage === '1') category = 'Salesman Complaint';
                   if (textMessage === '2') category = 'Distributor Complaint';
                   if (textMessage === '3') category = 'Quality/Price/Bill';
@@ -210,21 +211,22 @@ app.post('/webhook', async (req, res) => {
           else if (currentUser.step === 'ASK_COMPLAINT') {
               currentUser.data.complaint = textMessage;
               
-              // ✅ نئی تبدیلی: فائنل سمری میسج تیار کیا گیا
+              // ✅ فائنل سمری میسج
               const finalConfirmation = `
-*فارم جمع ہو گیا*
------------------
+*آپ کا ڈیٹا سسٹم میں درج کر لیا گیا ہے*
+------------------------------
 سیل مین کا نام: ${currentUser.data.salesman}
 دکان کا نام: ${currentUser.data.shop}
 دکان کا ایڈریس: ${currentUser.data.address}
 شکایت: ${currentUser.data.complaint}
----
-آپ کا بہت شکریہ! 🌹
-آپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ سے رابطہ کر لیا جائے گا۔
+-----
+بہت جلد آپ سے رابطہ کر لیا جائے گا۔
+بہت شکریہ! 🌹
               `.trim();
 
               const finalData = {
                   date: new Date().toLocaleString(),
+                  // ✅ Complaint Type missing fix
                   category: currentUser.data.category || 'N/A (Flow Break)', 
                   customerName: senderName, 
                   phone: senderPhone,
@@ -234,7 +236,7 @@ app.post('/webhook', async (req, res) => {
                   complaint: currentUser.data.complaint
               };
 
-              await sendReply(senderPhone, finalConfirmation); // سمری میسج بھیجا گیا
+              await sendReply(senderPhone, finalConfirmation);
               
               await appendToSheet(finalData);
               delete userState[senderPhone];
