@@ -6,7 +6,7 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-constport: process.env.PORT || 3000, host: '0.0.0.0';
+const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 
 // Environment Variables
@@ -182,5 +182,5 @@ app.post('/', async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Listening on port ${port}`);
+  console.log(`Server is running on port ${port}`);
 });
