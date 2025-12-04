@@ -43,13 +43,12 @@ async function appendToSheet(data) {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
 
-    // Headers کو آپ کی شیٹ اور خواہش کے مطابق Map کیا گیا ہے۔
+    // ✅ Headers updated: "Message" removed, "Complaint" used for category
     await sheet.addRow({
       "Time": data.date,
       "Name": data.customerName,
       "Phone": data.phone,
-      "Message": data.initialMessage,  
-      "Complain Type": data.category,  
+      "Complaint": data.category,  
       "Salesman Name": data.salesman,
       "Shop Name": data.shop,
       "Address": data.address,
@@ -133,7 +132,7 @@ app.post('/webhook', async (req, res) => {
           
           const currentUser = userState[senderPhone];
           
-          // 2. ✅ نام کی کیش (Cache) کا استعمال کریں
+          // 2. نام کی کیش (Cache) کا استعمال کریں
           let senderName = "Unknown";
           
           if (nameFromPayload) {
@@ -151,7 +150,7 @@ app.post('/webhook', async (req, res) => {
           if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) {
               console.log("🚀 Detected Greeting. Sending Menu...");
               
-              currentUser.data.initialMessage = textMessage; 
+              // چونکہ Message کالم ختم ہو گیا ہے، initialMessage کو بھی سیو کرنے کی ضرورت نہیں
               userState[senderPhone].step = 'START';
               
               const menuText = `خوش آمدید! 🌹
@@ -169,24 +168,22 @@ app.post('/webhook', async (req, res) => {
           
           // 2. Menu Selection (1-4)
           else if (currentUser.step === 'START') {
-              // ✅ یہاں ہر آنے والا میسج (حتی کہ غلط بھی) Message کالم میں سیو ہوگا
-              currentUser.data.initialMessage = textMessage; 
               
               if (['1', '2', '3', '4'].includes(textMessage)) {
                   let category = '';
                   if (textMessage === '1') category = 'Salesman Complaint';
                   if (textMessage === '2') category = 'Distributor Complaint';
-                  if (textMessage === '3') category = 'Quality/Price Issue';
+                  if (textMessage === '3') category = 'Quality/Price/Bill';
                   if (textMessage === '4') category = 'Stock Order';
 
                   currentUser.data.category = category;
                   
                   currentUser.step = 'ASK_SALESMAN';
                   
-                  await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔");
+                  await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھیں۔");
                   
               } else {
-                  await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) لکھ کر بھیجیں۔");
+                  await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) کا انتحاب کریں۔");
               }
           }
 
@@ -194,32 +191,31 @@ app.post('/webhook', async (req, res) => {
           else if (currentUser.step === 'ASK_SALESMAN') {
               currentUser.data.salesman = textMessage;
               currentUser.step = 'ASK_SHOP';
-              await sendReply(senderPhone, "شکریہ۔ اب اپنی دکان کا نام لکھ کر بھیجیں۔");
+              await sendReply(senderPhone, "شکریہ! اپنی دکان کا نام لکھیں۔");
           }
 
           // 4. Ask Address
           else if (currentUser.step === 'ASK_SHOP') {
               currentUser.data.shop = textMessage;
               currentUser.step = 'ASK_ADDRESS';
-              await sendReply(senderPhone, "شکریہ۔ اب اپنا ایڈریس لکھ کر بھیجیں۔");
+              await sendReply(senderPhone, "شکریہ! دکان کا ایڈریس لکھیں۔");
           }
 
           // 5. Ask Details
           else if (currentUser.step === 'ASK_ADDRESS') {
               currentUser.data.address = textMessage;
               currentUser.step = 'ASK_COMPLAINT';
-              await sendReply(senderPhone, "شکریہ۔ آخر میں اپنی شکایت کی تفصیل لکھیں۔");
+              await sendReply(senderPhone, "شکریہ! اب آخر میں اپنی شکایت کی تفصیل لکھیں۔");
           }
 
-          // 6. Finish
+          // 6. Finish (جہاں ڈیٹا شیٹ میں بھیجا جاتا ہے)
           else if (currentUser.step === 'ASK_COMPLAINT') {
               currentUser.data.complaint = textMessage;
               
+              // ✅ finalData سے initialMessage کو ہٹا دیا گیا ہے
               const finalData = {
                   date: new Date().toLocaleString(),
-                  // ✅ Category Missing کا مسئلہ حل ہو گیا ہے
                   category: currentUser.data.category || 'N/A (Flow Break)', 
-                  initialMessage: currentUser.data.initialMessage || 'Menu Selected', 
                   customerName: senderName, 
                   phone: senderPhone,
                   salesman: currentUser.data.salesman,
