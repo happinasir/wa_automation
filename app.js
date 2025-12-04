@@ -30,34 +30,34 @@ const nameCacheStore = {}; // نام کو سیشن سے باہر مستقل رک
 // 3. GOOGLE SHEET FUNCTION (ڈیٹا سیونگ logic)
 // ---------------------------------------------------------
 async function appendToSheet(data) {
-  console.log("📝 Attempting to save to Google Sheet...");
-  try {
-    const serviceAccountAuth = new JWT({
-      email: GOOGLE_CLIENT_EMAIL,
-      key: GOOGLE_PRIVATE_KEY,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+  console.log("📝 Attempting to save to Google Sheet...");
+  try {
+    const serviceAccountAuth = new JWT({
+      email: GOOGLE_CLIENT_EMAIL,
+      key: GOOGLE_PRIVATE_KEY,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-    const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByIndex[0];
+    const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[0];
 
-    // ✅ "Message" کالم کو ہٹا دیا گیا اور Complaint Type کو "Complaint" کالم میں میپ کیا گیا
-    await sheet.addRow({
-      "Time": data.date,
-      "Name": data.customerName,
-      "Phone": data.phone,
-      "Complaint": data.category,  // Salesman Complaint (Complaint Type)
-      "Salesman Name": data.salesman,
-      "Shop Name": data.shop,
-      "Address": data.address,
-      "Complaint Message": data.complaint 
-    });
+    // ✅ اصلاح کی گئی: کالم کی Key کو "Complaint Type" کر دیا گیا ہے۔
+    await sheet.addRow({
+      "Time": data.date,
+      "Name": data.customerName,
+      "Phone": data.phone,
+      "Complaint Type": data.category,  // <--- یہاں تبدیلی کی گئی ہے
+      "Salesman Name": data.salesman,
+      "Shop Name": data.shop,
+      "Address": data.address,
+      "Complaint Message": data.complaint 
+    });
 
-    console.log('✅ Data SAVED successfully!');
-  } catch (error) {
-    console.error('❌ Error saving to sheet:', error.message);
-  }
+    console.log('✅ Data SAVED successfully!');
+  } catch (error) {
+    console.error('❌ Error saving to sheet:', error.message);
+  }
 }
 
 // ---------------------------------------------------------
