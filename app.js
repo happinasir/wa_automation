@@ -14,7 +14,6 @@ const verifyToken = process.env.VERIFY_TOKEN;
 
 const SHEET_ID = process.env.SHEET_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-// پرائیویٹ کی کو ہینڈل کرنے کا محفوظ طریقہ
 const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY || "";
 const GOOGLE_PRIVATE_KEY = privateKeyRaw.replace(/\\n/g, '\n');
 
@@ -24,6 +23,7 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // ---------------------------------------------------------
 // 2. MEMORY (عارضی میموری)
 // ---------------------------------------------------------
+// userState میں سیشن کا اسٹیٹ اور نام کا کیش (nameCache) سیو ہوگا۔
 const userState = {}; 
 
 // ---------------------------------------------------------
@@ -42,7 +42,7 @@ async function appendToSheet(data) {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
 
-    // ✅ آپ کے حتمی Headers کے مطابق ڈیٹا سیو ہو رہا ہے
+    // Headers کو آپ کی شیٹ اور خواہش کے مطابق Map کیا گیا ہے۔
     await sheet.addRow({
       "Time": data.date,
       "Name": data.customerName,
@@ -69,7 +69,6 @@ async function sendReply(to, bodyText) {
   try {
     await axios({
       method: 'POST',
-      // مستحکم ورژن v19.0 استعمال ہو رہا ہے
       url: `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
       headers: {
         'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
@@ -116,8 +115,10 @@ app.post('/webhook', async (req, res) => {
         ) {
           const message = body.entry[0].changes[0].value.messages[0];
           const senderPhone = message.from;
-          const senderName = message.contacts ? message.contacts[0].profile.name : "Unknown";
           
+          // 1. میسج سے نام نکالیں (اگر Meta بھیج رہا ہو)
+          const nameFromPayload = message.contacts ? message.contacts[0].profile.name : null;
+
           if (message.type !== 'text') {
             console.log("⚠️ Received non-text message. Ignoring.");
             return;
@@ -126,20 +127,34 @@ app.post('/webhook', async (req, res) => {
           const textMessage = message.text.body.trim();
           const lowerText = textMessage.toLowerCase();
 
-          console.log(`👤 User: ${senderPhone} says: "${textMessage}"`);
-
           if (!userState[senderPhone]) {
               userState[senderPhone] = { step: 'START', data: {} };
           }
-
+          
           const currentUser = userState[senderPhone];
+          
+          // 2. ✅ نام کی کیش (Cache) کا استعمال کریں
+          const cachedName = currentUser.data.nameCache;
+          let senderName = "Unknown";
+
+          if (nameFromPayload) {
+              // اگر نیا نام ملا، تو اسے استعمال کریں اور کیش میں ڈال دیں
+              senderName = nameFromPayload;
+              currentUser.data.nameCache = nameFromPayload; 
+          } else if (cachedName) {
+              // نیا نام نہیں ہے، تو کیش والا نام استعمال کریں
+              senderName = cachedName;
+          }
+          
+          console.log(`👤 User: ${senderName} (${senderPhone}) says: "${textMessage}"`);
 
           // ---------------- LOGIC ----------------
 
           // 1. Greeting / Reset
           if (lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) {
               console.log("🚀 Detected Greeting. Sending Menu...");
-              userState[senderPhone] = { step: 'START', data: {} };
+              // اگر یوزر نے دوبارہ سلام کیا تو Name Cache محفوظ رہے گا، لیکن steps ری سیٹ ہو جائیں گے
+              userState[senderPhone].step = 'START';
               
               const menuText = `خوش آمدید! 🌹
 ہماری سروس میں آپ کا استقبال ہے۔
@@ -163,14 +178,14 @@ app.post('/webhook', async (req, res) => {
                   if (textMessage === '3') category = 'Quality/Price Issue';
                   if (textMessage === '4') category = 'Stock Order';
 
-                  // ✅ یہاں نمبر اور ٹیکسٹ دونوں سیو ہو رہے ہیں
                   currentUser.data.category = category;
                   currentUser.data.categoryID = textMessage; 
                   
                   currentUser.step = 'ASK_SALESMAN';
-                  await sendReply(senderPhone, `آپ نے منتخب کیا: *${category}*
                   
-براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔`);
+                  // 👇 تبدیلی: صرف اگلے سوال کا میسج جا رہا ہے
+                  await sendReply(senderPhone, "براہ کرم متعلقہ سیلز مین کا نام لکھ کر بھیجیں۔");
+                  
               } else {
                   await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) لکھ کر بھیجیں۔");
               }
@@ -201,12 +216,12 @@ app.post('/webhook', async (req, res) => {
           else if (currentUser.step === 'ASK_COMPLAINT') {
               currentUser.data.complaint = textMessage;
               
-              // ✅ یہاں categoryID کو finalData میں شامل کیا گیا
               const finalData = {
                   date: new Date().toLocaleString(),
                   category: currentUser.data.category,
                   categoryID: currentUser.data.categoryID,
-                  customerName: senderName,
+                  // ✅ یہاں Name Cache والا senderName استعمال ہو رہا ہے
+                  customerName: senderName, 
                   phone: senderPhone,
                   salesman: currentUser.data.salesman,
                   shop: currentUser.data.shop,
@@ -217,6 +232,7 @@ app.post('/webhook', async (req, res) => {
               await sendReply(senderPhone, "آپ کا بہت شکریہ! 🌹\nآپ کا ڈیٹا ہمارے سسٹم میں درج کر لیا گیا ہے، بہت جلد آپ کا مسئلہ حل ہو جائے گا۔");
               
               await appendToSheet(finalData);
+              // ڈیٹا سیو ہونے کے بعد سیشن ختم کریں
               delete userState[senderPhone];
           }
 
