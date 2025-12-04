@@ -6,7 +6,7 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-const port = process.env.PORT || 3000;
+constport: process.env.PORT || 3000, host: '0.0.0.0';
 const verifyToken = process.env.VERIFY_TOKEN;
 
 // Environment Variables
