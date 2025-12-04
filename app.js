@@ -64,7 +64,7 @@ async function sendReply(to, bodyText) {
     try {
         await axios({
             method: 'POST',
-            url: `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
+            url: `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
             headers: {
                 'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
                 'Content-Type': 'application/json',
