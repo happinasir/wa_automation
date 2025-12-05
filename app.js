@@ -14,7 +14,7 @@ const verifyToken = process.env.VERIFY_TOKEN;
 
 const SHEET_ID = process.env.SHEET_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY || "";
+const privateKeyRaw = process.env.PROCESS_ENV.GOOGLE_PRIVATE_KEY || "";
 const GOOGLE_PRIVATE_KEY = privateKeyRaw.replace(/\\n/g, '\n');
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
@@ -157,7 +157,7 @@ app.post('/webhook', async (req, res) => {
 براہِ کرم مطلوبہ آپشن کا اندراج کریں:
 
 1️⃣. سیل مین سے متعلق شکایت
-2️⃣. ڈسٹری بیوٹر سے متعلق شکایت
+2️⃣. ڈسٹریبیٹر سے متعلق شکایت
 3️⃣. سٹاک کی کوالٹی/ قیمت یا بل کے متعلق شکایت
 4️⃣. سٹاک آرڈر`;
 
@@ -186,7 +186,7 @@ app.post('/webhook', async (req, res) => {
               }
           }
           
-          // 2.5 ASK_NAME Step (New)
+          // 2.5 ASK_NAME Step
           else if (currentUser.step === 'ASK_NAME') {
               currentUser.data.customerName = textMessage;
               currentUser.step = 'ASK_SALESMAN';
@@ -222,13 +222,12 @@ app.post('/webhook', async (req, res) => {
               const category = currentUser.data.category;
               let contactInfo = "";
 
-              // ✅ رابطہ نمبر کی شرط شامل کی گئی
+              // رابطہ نمبر کی شرط
               if (category === 'Distributor Complaint') {
                   contactInfo = `
 *ڈسٹریبیٹر ڈائریکٹر: محمد اعجاز شیخ*
 0333-8033113`;
               } else {
-                  // Option 1, 3, اور 4 کے لیے (مسعود والا نمبر)
                   contactInfo = `
 *ڈسٹریبیٹر مینیجر: شیخ محمد مسعود*
 0300-7753113`;
@@ -242,7 +241,6 @@ app.post('/webhook', async (req, res) => {
 دکان کا نام: ${currentUser.data.shop}
 دکان کا ایڈریس: ${currentUser.data.address}
 شکایت: ${category}
-
 بہت جلد آپ سے رابطہ کر لیا جائے گا۔ شکریہ! 🌹
 ${contactInfo}
               `.trim();
@@ -250,7 +248,7 @@ ${contactInfo}
               const finalData = {
                   date: new Date().toLocaleString(),
                   category: category || 'N/A (Flow Break)', 
-                  customerName: currentUser.data.customerName || senderName, // User provided name or cached name
+                  customerName: currentUser.data.customerName || senderName,
                   phone: senderPhone,
                   salesman: currentUser.data.salesman,
                   shop: currentUser.data.shop,
