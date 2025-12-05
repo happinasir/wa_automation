@@ -1,7 +1,7 @@
 const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
-const axios = require('axios');
+const { default: axios } = require('axios'); // Corrected import for axios
 
 const app = express();
 app.use(express.json());
@@ -14,7 +14,8 @@ const verifyToken = process.env.VERIFY_TOKEN;
 
 const SHEET_ID = process.env.SHEET_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY || "";
+// ✅ Deploy Fix: .PROCESS_ENV کو ہٹا دیا گیا ہے
+const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY || ""; 
 const GOOGLE_PRIVATE_KEY = privateKeyRaw.replace(/\\n/g, '\n');
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
@@ -144,12 +145,14 @@ app.post('/webhook', async (req, res) => {
 
           // ---------------- LOGIC ----------------
 
-          // 1. Greeting / Reset (FIXED: Does not reset if waiting for final complaint detail)
-          if ((lowerText.includes("salam") || lowerText.includes("hi") || lowerText.includes("hello") || lowerText.includes("hy")) && currentUser.step !== 'ASK_COMPLAINT') {
-              console.log("🚀 Detected Greeting. Sending Menu...");
+          // ✅ 1. Greeting / Reset (FIXED: Only resets if the message is *EXACTLY* a greeting word)
+          const isStrictGreeting = lowerText === 'salam' || lowerText === 'hi' || lowerText === 'hello' || lowerText === 'hy' || lowerText === 'reset'; // 'reset' added for user control
+          
+          if (isStrictGreeting) {
+              console.log("🚀 Detected Greeting/Reset. Sending Menu...");
               
               userState[senderPhone].step = 'START';
-              delete userState[senderPhone].data.customerName; 
+              userState[senderPhone].data = {}; // Clear all previous data explicitly
               
               const menuText = `خوش آمدید! 🌹
 ہماری کسٹمر سپورٹ سروس میں آپ کا استقبال ہے۔
@@ -179,7 +182,7 @@ app.post('/webhook', async (req, res) => {
                   
                   currentUser.step = 'ASK_NAME'; // Go to the user name prompt
                   
-                  await sendReply(senderPhone, "شکریہ۔ براہ کرم اپنا نام لکھیں۔");
+                  await sendReply(senderPhone, `آپ نے منتخب کیا: ${category}\n\nشکریہ۔ براہ کرم اپنا پورا نام لکھیں۔`);
                   
               } else {
                   await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) کا انتحاب کریں۔");
@@ -190,22 +193,22 @@ app.post('/webhook', async (req, res) => {
           else if (currentUser.step === 'ASK_NAME') {
               currentUser.data.customerName = textMessage;
               currentUser.step = 'ASK_SALESMAN';
-              await sendReply(senderPhone, "سیلز مین کا نام لکھیں۔");
+              await sendReply(senderPhone, "شکریہ! اب براہ کرم سیلز مین کا نام لکھیں۔");
           }
 
 
           // 3. Ask Shop
           else if (currentUser.step === 'ASK_SALESMAN') {
               currentUser.data.salesman = textMessage;
-              currentUser.step = 'ASK_SHOP';0
-              await sendReply(senderPhone, "دکان کا نام لکھیں۔");
+              currentUser.step = 'ASK_SHOP';
+              await sendReply(senderPhone, "شکریہ! اب اپنی دکان کا نام لکھیں۔");
           }
 
           // 4. Ask Address
           else if (currentUser.step === 'ASK_SHOP') {
               currentUser.data.shop = textMessage;
               currentUser.step = 'ASK_ADDRESS';
-              await sendReply(senderPhone, "دکان کا ایڈریس لکھیں۔");
+              await sendReply(senderPhone, "شکریہ۔ اب اپنا ایڈریس لکھیں۔");
           }
 
           // 5. Ask Details
@@ -225,11 +228,11 @@ app.post('/webhook', async (req, res) => {
               // رابطہ نمبر کی شرط
               if (category === 'Distributor Complaint') {
                   contactInfo = `
-*Director: محمد اعجاز شیخ*
+*ڈسٹری بیوٹر ڈائریکٹر: محمد اعجاز شیخ*
 Mob: 0333-8033113`;
               } else {
                   contactInfo = `
-*DM: شیخ محمد مسعود*
+*ڈسٹری بیوٹر مینیجر: شیخ محمد مسعود*
 Mob: 0300-7753113`;
               }
 
