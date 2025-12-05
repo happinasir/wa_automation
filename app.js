@@ -24,6 +24,7 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // 2. MEMORY (عارضی میموری)
 // ---------------------------------------------------------
 const userState = {}; 
+// ✅ Name Cache کی ضرورت ختم کر دی گئی ہے، لیکن اب بھی یوزر کا نام محفوظ کرنے کے لیے ایک متغیر استعمال ہو گا۔
 const nameCacheStore = {}; 
 
 // ---------------------------------------------------------
@@ -115,7 +116,8 @@ app.post('/webhook', async (req, res) => {
           const message = body.entry[0].changes[0].value.messages[0];
           const senderPhone = message.from;
           
-          const nameFromPayload = message.contacts ? message.contacts[0].profile.name : null;
+          // اب ہم یہاں سے نام نہیں لیں گے، بلکہ یوزر سے پوچھیں گے
+          // const nameFromPayload = message.contacts ? message.contacts[0].profile.name : null;
 
           if (message.type !== 'text') {
             console.log("⚠️ Received non-text message. Ignoring.");
@@ -131,15 +133,8 @@ app.post('/webhook', async (req, res) => {
           
           const currentUser = userState[senderPhone];
           
-          // 2. Name Cache Logic
-          let senderName = "Unknown";
-          
-          if (nameFromPayload) {
-              senderName = nameFromPayload;
-              nameCacheStore[senderPhone] = nameFromPayload;
-          } else if (nameCacheStore[senderPhone]) {
-              senderName = nameCacheStore[senderPhone];
-          }
+          // 2. Name Cache Logic - یوزر کے ان پٹ سے نام سیٹ ہو گا
+          let senderName = currentUser.data.customerName || "Unknown";
           
           console.log(`👤 User: ${senderName} (${senderPhone}) says: "${textMessage}"`);
 
@@ -150,6 +145,8 @@ app.post('/webhook', async (req, res) => {
               console.log("🚀 Detected Greeting. Sending Menu...");
               
               userState[senderPhone].step = 'START';
+              // customerName کو ری سیٹ کریں تاکہ دوبارہ پوچھا جائے
+              delete userState[senderPhone].data.customerName; 
               
               const menuText = `خوش آمدید! 🌹
 ہماری کسٹمر سپورٹ سروس میں آپ کا استقبال ہے۔
@@ -177,17 +174,26 @@ app.post('/webhook', async (req, res) => {
 
                   currentUser.data.category = category;
                   
-                  currentUser.step = 'ASK_SALESMAN';
+                  // ✅ نیا سٹیپ: نام پوچھنا
+                  currentUser.step = 'ASK_NAME'; 
                   
-                  // سوال وہی رہے گا
-                  await sendReply(senderPhone, "براہ کرم سیلز مین کا نام لکھیں۔");
+                  await sendReply(senderPhone, "شکریہ۔ براہ کرم اپنا پورا نام لکھیں۔");
                   
               } else {
                   await sendReply(senderPhone, "براہ کرم مینو میں سے درست نمبر (1, 2, 3 یا 4) کا انتحاب کریں۔");
               }
           }
+          
+          // ✅ نیا سٹیپ: صارف کا نام محفوظ کرنا
+          else if (currentUser.step === 'ASK_NAME') {
+              currentUser.data.customerName = textMessage;
+              currentUser.step = 'ASK_SALESMAN';
+              // اب یہ ASK_SALESMAN والے سٹیپ پر جائے گا
+              await sendReply(senderPhone, "شکریہ! اب براہ کرم سیلز مین کا نام لکھیں۔");
+          }
 
-          // 3. Ask Shop
+
+          // 3. Ask Shop (پچھلا ASK_SALESMAN تھا)
           else if (currentUser.step === 'ASK_SALESMAN') {
               currentUser.data.salesman = textMessage;
               currentUser.step = 'ASK_SHOP';
@@ -215,22 +221,21 @@ app.post('/webhook', async (req, res) => {
               const category = currentUser.data.category;
               let contactInfo = "";
 
-              // ✅ رابطہ نمبر کی شرط شامل کی گئی
+              // رابطہ نمبر کی شرط شامل کی گئی
               if (category === 'Distributor Complaint') {
                   contactInfo = `
-*محمد اعجاز شیخ*
-0333-8033113`;
+*محمد اعجاز شیخ* 03338033113`;
               } else {
                   // Option 1, 3, اور 4 کے لیے
                   contactInfo = `
-*شیخ محمد مسعود*
-0300-7753113`;
+*شیخ محمد مسعود* 03007753113`;
               }
 
               // ✅ آخری سمری میسج
               const finalConfirmation = `
 *آپ کا ڈیٹا سسٹم میں درج کر لیا گیا ہے*
 ----------------------------------------
+آپ کا نام: ${currentUser.data.customerName}
 سیل مین کا نام: ${currentUser.data.salesman}
 دکان کا نام: ${currentUser.data.shop}
 دکان کا ایڈریس: ${currentUser.data.address}
@@ -243,7 +248,7 @@ ${contactInfo}
               const finalData = {
                   date: new Date().toLocaleString(),
                   category: category || 'N/A (Flow Break)', 
-                  customerName: senderName, 
+                  customerName: currentUser.data.customerName || "N/A", // یہاں سے نام بھیجیں
                   phone: senderPhone,
                   salesman: currentUser.data.salesman,
                   shop: currentUser.data.shop,
