@@ -14,7 +14,8 @@ const verifyToken = process.env.VERIFY_TOKEN;
 
 const SHEET_ID = process.env.SHEET_ID;
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
-const privateKeyRaw = process.env.PROCESS_ENV.GOOGLE_PRIVATE_KEY || "";
+// ✅ یہاں سے غلطی والا .PROCESS_ENV ہٹا دیا گیا ہے
+const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY || ""; 
 const GOOGLE_PRIVATE_KEY = privateKeyRaw.replace(/\\n/g, '\n');
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
